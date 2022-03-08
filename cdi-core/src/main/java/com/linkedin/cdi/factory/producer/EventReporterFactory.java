@@ -27,4 +27,18 @@ public class EventReporterFactory {
     }
     return null;
   }
+
+  public static EventReporter getLoggingReporter(State state) {
+    try {
+      Class<?> reporterClass = Class.forName(MSTAGE_LOGGER_REPORTER_CLASS.get(state));
+      Constructor<? extends EventReporter> eventReporterConstructor =
+          (Constructor<? extends EventReporter>) reporterClass.getConstructor(State.class);
+      return eventReporterConstructor.newInstance(state);
+    } catch (Exception e) {
+      LOG.error("Unable to instantiate logger Reporter make sure to pass {} that implements com.linkedin.cdi.factory.producer.EventReporter interface", MSTAGE_LOGGER_REPORTER_CLASS.get(state));
+      LOG.error(e.getMessage());
+    }
+    return null;
+  }
+
 }

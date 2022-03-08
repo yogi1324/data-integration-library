@@ -6,6 +6,7 @@ package com.linkedin.cdi.connection;
 
 import com.linkedin.cdi.exception.RetriableAuthenticationException;
 import com.linkedin.cdi.factory.ConnectionClientFactory;
+import com.linkedin.cdi.factory.LogWrapper;
 import com.linkedin.cdi.factory.sftp.SftpClient;
 import com.linkedin.cdi.keys.ExtractorKeys;
 import com.linkedin.cdi.keys.JobKeys;
@@ -13,19 +14,17 @@ import com.linkedin.cdi.keys.SftpKeys;
 import com.linkedin.cdi.util.WorkUnitStatus;
 import java.io.File;
 import java.net.URI;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.commons.lang.StringUtils;
 import org.apache.gobblin.configuration.State;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.cdi.configuration.PropertyCollection.*;
 
 
 public class SftpConnection extends MultistageConnection {
-  private static final Logger LOG = LoggerFactory.getLogger(SftpConnection.class);
+  //private static final Logger LOG = LoggerFactory.getLogger(SftpConnection.class);
+  private LogWrapper log;
 
   final private SftpKeys sftpSourceKeys;
   SftpClient fsClient;
@@ -34,12 +33,14 @@ public class SftpConnection extends MultistageConnection {
     super(state, jobKeys, extractorKeys);
     assert jobKeys instanceof SftpKeys;
     sftpSourceKeys = (SftpKeys) jobKeys;
+    log = new LogWrapper(state, SftpConnection.class);
   }
 
   @Override
   public boolean closeAll(String message) {
+    if (log !=null) log.close();
     if (this.fsClient != null) {
-      LOG.info("Shutting down FileSystem connection");
+      log.info("Shutting down FileSystem connection");
       this.fsClient.close();
       fsClient = null;
     }
@@ -50,14 +51,14 @@ public class SftpConnection extends MultistageConnection {
   public WorkUnitStatus execute(WorkUnitStatus status) {
     String path = getPath();
     String finalPrefix = getWorkUnitSpecificString(path, getExtractorKeys().getDynamicParameters());
-    LOG.info("File path found is: " + finalPrefix);
+    log.info("File path found is: " + finalPrefix);
     try {
       if (getFsClient() == null) {
-        LOG.error("Error initializing SFTP connection");
+        log.error("Error initializing SFTP connection");
         return null;
       }
     } catch (Exception e) {
-      LOG.error("Error initializing SFTP connection", e);
+      log.error("Error initializing SFTP connection", e);
       return null;
     }
 
@@ -68,26 +69,26 @@ public class SftpConnection extends MultistageConnection {
           .filter(objectKey -> objectKey.matches(sftpSourceKeys.getFilesPattern()))
           .collect(Collectors.toList());
     } catch (Exception e) {
-      LOG.error("Error reading file list", e);
+      log.error("Error reading file list", e);
       return null;
     }
 
-    LOG.info("No Of Files to be processed matching the pattern: {}", files.size());
+    log.info("No Of Files to be processed matching the pattern: {}", files.size());
 
     if (StringUtils.isBlank(sftpSourceKeys.getTargetFilePattern())) {
       status.setBuffer(wrap(files));
     } else {
       String fileToDownload = files.size() == 0 ? StringUtils.EMPTY : files.get(0);
       if (StringUtils.isNotBlank(fileToDownload)) {
-        LOG.info("Downloading file: {}", fileToDownload);
+        log.info("Downloading file: {}", fileToDownload);
         try {
           status.setBuffer(this.fsClient.getFileStream(fileToDownload));
         } catch (Exception e) {
-          LOG.error("Error downloading file {}", fileToDownload, e);
+          log.error("Error downloading file {}", fileToDownload, e);
           return null;
         }
       } else {
-        LOG.warn("Invalid set of parameters. Please make sure to set source directory, entity and file pattern");
+        log.warn("Invalid set of parameters. Please make sure to set source directory, entity and file pattern");
       }
     }
     return status;
@@ -122,7 +123,7 @@ public class SftpConnection extends MultistageConnection {
         ConnectionClientFactory factory = (ConnectionClientFactory) factoryClass.getDeclaredConstructor().newInstance();
         this.fsClient = factory.getSftpChannelClient(this.getState());
       } catch (Exception e) {
-        LOG.error("Error initiating SFTP client", e);
+        log.error("Error initiating SFTP client", e);
       }
     }
     return this.fsClient;
@@ -138,7 +139,7 @@ public class SftpConnection extends MultistageConnection {
    * @return list of content
    */
   private List<String> getFiles(String filesPattern) {
-    LOG.info("Files to be processed from input " + filesPattern);
+    log.info("Files to be processed from input " + filesPattern);
     try {
       List<String> files = fsClient.ls(filesPattern, 2);
       int i = 0;
@@ -154,7 +155,7 @@ public class SftpConnection extends MultistageConnection {
       }
       return files;
     } catch (Exception e) {
-      LOG.error("Unable to list files after 2 tries. {}", e.getMessage());
+      log.error("Unable to list files after 2 tries. {}", e.getMessage());
       throw new RuntimeException(e);
     }
   }

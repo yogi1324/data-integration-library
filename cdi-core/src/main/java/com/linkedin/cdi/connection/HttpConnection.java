@@ -11,6 +11,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.linkedin.cdi.exception.RetriableAuthenticationException;
 import com.linkedin.cdi.factory.ConnectionClientFactory;
+import com.linkedin.cdi.factory.LogWrapper;
 import com.linkedin.cdi.keys.ExtractorKeys;
 import com.linkedin.cdi.keys.HttpKeys;
 import com.linkedin.cdi.keys.JobKeys;
@@ -32,8 +33,6 @@ import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.client.protocol.HttpClientContext;
 import org.apache.http.util.EntityUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.cdi.configuration.PropertyCollection.*;
 import static com.linkedin.cdi.configuration.StaticConstants.*;
@@ -46,7 +45,8 @@ import static com.linkedin.cdi.configuration.StaticConstants.*;
  * @author Chris Li
  */
 public class HttpConnection extends MultistageConnection {
-  private static final Logger LOG = LoggerFactory.getLogger(HttpConnection.class);
+  //private static final Logger LOG = LoggerFactory.getLogger(HttpConnection.class);
+  private LogWrapper log;
   final private HttpKeys httpSourceKeys;
   private HttpClient httpClient;
   private CloseableHttpResponse response;
@@ -76,6 +76,7 @@ public class HttpConnection extends MultistageConnection {
     httpClient = getHttpClient(state);
     assert jobKeys instanceof HttpKeys;
     httpSourceKeys = (HttpKeys) jobKeys;
+    log = new LogWrapper(state, HttpConnection.class);
   }
 
   @Override
@@ -96,7 +97,7 @@ public class HttpConnection extends MultistageConnection {
         ConnectionClientFactory factory = (ConnectionClientFactory) factoryClass.newInstance();
         httpClient = factory.getHttpClient(state);
       } catch (Exception e) {
-        LOG.error("Error creating HttpClient: {}", e.getMessage());
+        log.error("Error creating HttpClient: {}", e.getMessage());
       }
     }
     return httpClient;
@@ -123,7 +124,7 @@ public class HttpConnection extends MultistageConnection {
     } catch (RetriableAuthenticationException e) {
       throw e;
     } catch (Exception e) {
-      LOG.error(e.getMessage(), e);
+      log.error(e.getMessage(), e);
       return null;
     }
 
@@ -144,7 +145,7 @@ public class HttpConnection extends MultistageConnection {
       // Log but ignore errors when getting content and content type
       // These errors will lead to a NULL buffer in work unit status
       // And that situation will be handled in extractor accordingly
-      LOG.error(e.getMessage());
+      log.error(e.getMessage());
     }
 
     return status;
@@ -154,10 +155,10 @@ public class HttpConnection extends MultistageConnection {
       final HttpRequestMethod command,
       final JsonObject parameters
   ) throws RetriableAuthenticationException {
-    LOG.debug("Execute Http {} with parameters:", command.toString());
+    log.debug("Execute Http {} with parameters:", command.toString());
     for (Map.Entry<String, JsonElement> entry: parameters.entrySet()) {
       if (!entry.getKey().equalsIgnoreCase(KEY_WORD_PAYLOAD)) {
-        LOG.debug("parameter: {} value: {}", entry.getKey(), entry.getValue());
+        log.debug("parameter: {} value: {}", entry.getKey(), entry.getValue());
       }
     }
     Pair<String, CloseableHttpResponse> response = executeHttpRequest(command,
@@ -166,7 +167,7 @@ public class HttpConnection extends MultistageConnection {
         httpSourceKeys.getHttpRequestHeadersWithAuthentication());
 
     if (response.getLeft().equalsIgnoreCase(KEY_WORD_HTTP_OK)) {
-      LOG.info("Request was successful, return HTTP response");
+      log.info("Request was successful, return HTTP response");
       return response.getRight();
     }
 
@@ -178,7 +179,7 @@ public class HttpConnection extends MultistageConnection {
     // by returning NULL, the task will complete without failure
     if (status < 400 && !httpSourceKeys.getHttpStatuses().getOrDefault("error", Lists.newArrayList()).contains(status)
         || httpSourceKeys.getHttpStatuses().getOrDefault("warning", Lists.newArrayList()).contains(status)) {
-      LOG.warn("Request was successful with warnings, return NULL response");
+      log.warn("Request was successful with warnings, return NULL response");
       return null;
     }
 
@@ -187,8 +188,8 @@ public class HttpConnection extends MultistageConnection {
     List<Integer> paginationErrors = httpSourceKeys.getHttpStatuses().getOrDefault(
         "pagination_error", Lists.newArrayList());
     if (getJobKeys().getIsSecondaryAuthenticationEnabled() && paginationErrors.contains(status)) {
-      LOG.info("Request was unsuccessful, and needed retry with new authentication credentials");
-      LOG.info("Sleep {} seconds, waiting for credentials to refresh", getJobKeys().getRetryDelayInSec());
+      log.info("Request was unsuccessful, and needed retry with new authentication credentials");
+      log.info("Sleep {} seconds, waiting for credentials to refresh", getJobKeys().getRetryDelayInSec());
       throw new RetriableAuthenticationException("Stale authentication token.");
     }
 
@@ -238,7 +239,7 @@ public class HttpConnection extends MultistageConnection {
       }
       HttpUriRequest request = command.getHttpRequest(httpUriTemplate, queryParameters, headers, payloads);
       response = (CloseableHttpResponse) httpClient.execute(request, context);
-      LOG.debug(context.toString());
+      log.debug(context.toString());
     } catch (Exception e) {
       throw new RuntimeException(e.getMessage(), e);
     }
@@ -251,10 +252,10 @@ public class HttpConnection extends MultistageConnection {
     // it will retry accessing the token by passing the response object back).
     Integer status = response.getStatusLine().getStatusCode();
     String reason = response.getStatusLine().getReasonPhrase();
-    LOG.info("processing status: {} and reason: {}", status, reason);
+    log.info("processing status: {} and reason: {}", status, reason);
     if (httpSourceKeys.getHttpStatuses().getOrDefault("success", Lists.newArrayList()).contains(status)
         && !httpSourceKeys.getHttpStatusReasons().getOrDefault("error", Lists.newArrayList()).contains(reason)) {
-      LOG.info("Request was successful, returning OK and HTTP response.");
+      log.info("Request was successful, returning OK and HTTP response.");
       return Pair.of(KEY_WORD_HTTP_OK, response);
     }
 
@@ -263,13 +264,13 @@ public class HttpConnection extends MultistageConnection {
     if (null != response.getEntity()) {
       try {
         reason += StringUtils.LF + EntityUtils.toString(response.getEntity());
-        LOG.error("Status code: {}, reason: {}", status, reason);
+        log.error("Status code: {}, reason: {}", status, reason);
         response.close();
       } catch (IOException e) {
         throw new RuntimeException(e.getMessage(), e);
       }
     }
-    LOG.warn("Request was unsuccessful, returning NOTOK and HTTP response");
+    log.warn("Request was unsuccessful, returning NOTOK and HTTP response");
     return Pair.of(KEY_WORD_HTTP_NOTOK, response);
   }
 
@@ -306,13 +307,13 @@ public class HttpConnection extends MultistageConnection {
 
   @Override
   public boolean closeStream() {
-    LOG.info("Closing InputStream for {}", getExtractorKeys().getSignature());
+    log.info("Closing InputStream for {}", getExtractorKeys().getSignature());
     try {
       if (response != null) {
         response.close();
       }
     } catch (Exception e) {
-      LOG.warn("Error closing the input stream", e);
+      log.warn("Error closing the input stream", e);
       return false;
     }
     return true;
@@ -321,13 +322,14 @@ public class HttpConnection extends MultistageConnection {
 
   @Override
   public boolean closeAll(String message) {
+    if (log !=null) log.close();
     try {
       if (this.httpClient instanceof Closeable) {
         ((Closeable) this.httpClient).close();
         httpClient = null;
       }
     } catch (IOException e) {
-      LOG.error("error closing HttpSource {}", e.getMessage());
+      log.error("error closing HttpSource {}", e.getMessage());
       return false;
     }
     return true;

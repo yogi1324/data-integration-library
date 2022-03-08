@@ -146,6 +146,11 @@ public interface PropertyCollection {
   KafkaProperties MSTAGE_KAFKA_PROPERTIES = new KafkaProperties("ms.kafka");
   StringProperties MSTAGE_REPORTER_CLASS = new StringProperties("ms.reporter.class",
       "com.linkedin.cdi.factory.producer.KafkaEventReporter");
+  BooleanProperties MSTAGE_KAFKA_LOGGING_ENABLED = new BooleanProperties("ms.enable.kafka.logging", Boolean.FALSE);
+  KafkaProperties MSTAGE_KAFKA_LOGGER_PROPERTIES = new KafkaProperties("ms.kafka.logger");
+  StringProperties MSTAGE_LOGGER_REPORTER_CLASS = new StringProperties("ms.kafka.logger.reporter.class",
+      "com.linkedin.cdi.factory.producer.KafkaLoggingReporter");
+
 
 
   // default: 500, minimum: 1, maximum: -

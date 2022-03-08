@@ -6,6 +6,7 @@ package com.linkedin.cdi.source;
 
 import com.linkedin.cdi.connection.SftpConnection;
 import com.linkedin.cdi.extractor.MultistageExtractor;
+import com.linkedin.cdi.factory.LogWrapper;
 import com.linkedin.cdi.keys.SftpKeys;
 import com.linkedin.cdi.util.VariableUtils;
 import java.net.URI;
@@ -13,6 +14,7 @@ import java.net.URISyntaxException;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.gobblin.configuration.ConfigurationKeys;
+import org.apache.gobblin.configuration.SourceState;
 import org.apache.gobblin.configuration.State;
 import org.apache.gobblin.configuration.WorkUnitState;
 import org.apache.gobblin.source.extractor.Extractor;
@@ -26,7 +28,8 @@ import static com.linkedin.cdi.configuration.PropertyCollection.*;
  * Source class to handle sftp protocol
  */
 public class SftpSource extends MultistageSource<Schema, GenericRecord> {
-  private static final Logger LOG = LoggerFactory.getLogger(SftpSource.class);
+  //private static final Logger LOG = LoggerFactory.getLogger(SftpSource.class);
+  private LogWrapper log;
   SftpKeys sftpSourceKeys;
 
   public SftpKeys getSftpSourceKeys() {
@@ -43,6 +46,7 @@ public class SftpSource extends MultistageSource<Schema, GenericRecord> {
   }
 
   protected void initialize(State state) {
+    log = new LogWrapper(state, SftpSource.class);
     super.initialize(state);
     this.parseUri(state);
     sftpSourceKeys.setFilesPattern(MSTAGE_SOURCE_FILES_PATTERN.get(state));
@@ -87,8 +91,14 @@ public class SftpSource extends MultistageSource<Schema, GenericRecord> {
         }
         sftpSourceKeys.setFilesPath(uri.getPath());
       } catch (URISyntaxException e) {
-        LOG.warn("Invalid URI format in ms.source.uri", e);
+        log.warn("Invalid URI format in ms.source.uri", e);
       }
     }
+  }
+
+  @Override
+  public void shutdown(SourceState state) {
+    if (log!=null) log.close();
+    super.shutdown(state);
   }
 }

@@ -9,6 +9,7 @@ import com.google.gson.JsonObject;
 import com.linkedin.cdi.exception.RetriableAuthenticationException;
 import com.linkedin.cdi.extractor.CsvExtractor;
 import com.linkedin.cdi.extractor.JsonExtractor;
+import com.linkedin.cdi.factory.LogWrapper;
 import com.linkedin.cdi.keys.ExtractorKeys;
 import com.linkedin.cdi.keys.JobKeys;
 import com.linkedin.cdi.util.InputStreamUtils;
@@ -17,8 +18,6 @@ import com.linkedin.cdi.util.WorkUnitStatus;
 import java.io.InputStream;
 import java.util.List;
 import org.apache.gobblin.configuration.State;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.cdi.configuration.PropertyCollection.*;
 import static com.linkedin.cdi.configuration.StaticConstants.*;
@@ -30,7 +29,8 @@ import static com.linkedin.cdi.configuration.StaticConstants.*;
  * @author Chris Li
  */
 public class MultistageConnection implements Connection {
-  private static final Logger LOG = LoggerFactory.getLogger(MultistageConnection.class);
+  //private static final Logger LOG = LoggerFactory.getLogger(MultistageConnection.class);
+  private LogWrapper log;
   private State state = null;
   private JobKeys jobKeys = null;
   private ExtractorKeys extractorKeys = null;
@@ -63,6 +63,7 @@ public class MultistageConnection implements Connection {
     this.setJobKeys(jobKeys);
     this.setState(state);
     this.setExtractorKeys(extractorKeys);
+    log = new LogWrapper(state, MultistageConnection.class);
   }
 
   /**
@@ -83,6 +84,7 @@ public class MultistageConnection implements Connection {
    */
   @Override
   public boolean closeAll(final String message) {
+    if (log!=null) log.close();
     return true;
   }
 
@@ -113,11 +115,11 @@ public class MultistageConnection implements Connection {
     try {
       Thread.sleep(jobKeys.getCallInterval());
     } catch (Exception e) {
-      LOG.warn(e.getMessage());
+      log.warn(e.getMessage());
     }
-    LOG.info("Starting a new request to the source, work unit = {}", extractorKeys.getSignature());
-    LOG.debug("Prior parameters: {}", extractorKeys.getDynamicParameters().toString());
-    LOG.debug("Prior work unit status: {}", workUnitStatus.toString());
+    log.info("Starting a new request to the source, work unit = {}", extractorKeys.getSignature());
+    log.debug("Prior parameters: {}", extractorKeys.getDynamicParameters().toString());
+    log.debug("Prior work unit status: {}", workUnitStatus.toString());
     return workUnitStatus;
   }
 
@@ -138,9 +140,9 @@ public class MultistageConnection implements Connection {
           parameters,
           false).getKey();
     } catch (Exception e) {
-      LOG.error("Error getting work unit specific string " + e);
+      log.error("Error getting work unit specific string " + e);
     }
-    LOG.info("Final work unit specific string: {}", finalString);
+    log.info("Final work unit specific string: {}", finalString);
     return finalString;
   }
 

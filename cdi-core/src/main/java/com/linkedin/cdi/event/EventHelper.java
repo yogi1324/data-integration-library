@@ -4,6 +4,7 @@
 package com.linkedin.cdi.event;
 
 import com.linkedin.cdi.configuration.MultistageProperties;
+import com.linkedin.cdi.events.CdiLoggingEvent;
 import com.linkedin.cdi.events.CdiTrackingEvent;
 import java.util.HashMap;
 import java.util.List;
@@ -51,4 +52,19 @@ public class EventHelper {
     }
     return map;
   }
+
+  public static CdiLoggingEvent createCdiLoggingEvent(State state, String level,String message) {
+    CdiLoggingEvent.Builder builder = CdiLoggingEvent.newBuilder();
+    builder.setJobid(state.getProp("job.id"))
+        .setTaskid(state.getProp("task.id"))
+        .setAzkabanid(state.getProp("azkaban.flow.execid"))
+        .setNamespace(EXTRACT_NAMESPACE.get(state))
+        .setTablename(EXTRACT_TABLE_NAME.get(state))
+        .setTimestamp(System.currentTimeMillis())
+        .setMessage(message)
+        .setLevel(level);
+
+    return builder.build();
+  }
+
 }

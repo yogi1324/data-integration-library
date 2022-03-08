@@ -13,6 +13,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.linkedin.cdi.event.EventHelper;
 import com.linkedin.cdi.extractor.MultistageExtractor;
+import com.linkedin.cdi.factory.LogWrapper;
 import com.linkedin.cdi.factory.producer.EventReporter;
 import com.linkedin.cdi.factory.producer.EventReporterFactory;
 import com.linkedin.cdi.keys.JobKeys;
@@ -39,8 +40,6 @@ import org.apache.gobblin.source.extractor.extract.LongWatermark;
 import org.apache.gobblin.source.workunit.Extract;
 import org.apache.gobblin.source.workunit.WorkUnit;
 import org.joda.time.DateTime;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.testng.Assert;
 
 import static com.linkedin.cdi.configuration.PropertyCollection.*;
@@ -71,7 +70,7 @@ import static com.linkedin.cdi.util.WatermarkDefinition.WatermarkTypes.*;
  */
 @SuppressWarnings("unchecked")
 public class MultistageSource<S, D> extends AbstractSource<S, D> {
-  private static final Logger LOG = LoggerFactory.getLogger(MultistageSource.class);
+  protected LogWrapper log;
   final static private Gson GSON = new Gson();
   final static private String PROPERTY_SEPARATOR = ".";
   final static private String DUMMY_DATETIME_WATERMARK_START = "2019-01-01";
@@ -113,6 +112,9 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
   @Override
   public List<WorkUnit> getWorkunits(SourceState state) {
     sourceState = state;
+    log = new LogWrapper(state, MultistageSource.class);
+    log.info("Before invoking initialization method in MultistageSource class");
+    log.info("Before invoking initialization method in {} class", getClass().getCanonicalName());
     initialize(state);
     eventReporter = MSTAGE_METRICS_ENABLED.get(state) ? EventReporterFactory.getEventReporter(state) : null;
 
@@ -214,14 +216,17 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
    */
   @Override
   public void shutdown(SourceState state) {
-    LOG.info("MultistageSource Shutdown() called, instructing extractors to close connections");
+    if (log != null) {
+      log.info("MultistageSource Shutdown() called, instructing extractors to close connections");
+      log.close();
+    }
+
     for (MultistageExtractor<S, D> extractor: extractorState.keySet()) {
       extractor.closeConnection();
     }
     if (eventReporter != null) {
       eventReporter.close();
     }
-
   }
 
   List<WorkUnit> generateWorkUnits(List<WatermarkDefinition> definitions, Map<String, Long> previousHighWatermarks) {
@@ -278,10 +283,10 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
     // cutoff time is moved forward by ABSTINENT_PERIOD
     Long cutoffTime = previousHighWatermarks.size() == 0 ? -1 : Collections.max(previousHighWatermarks.values())
         - MSTAGE_GRACE_PERIOD_DAYS.getMillis(sourceState);
-    LOG.debug("Overall cutoff time: {}", cutoffTime);
+    log.debug("Overall cutoff time: {}", cutoffTime);
 
     for (ImmutablePair<Long, Long> dtPartition : datetimePartitions) {
-      LOG.debug("dtPartition: {}", dtPartition);
+      log.debug("dtPartition: {}", dtPartition);
       for (String unitPartition: unitPartitions) {
 
         // adding the date time partition and unit partition combination to work units until
@@ -298,7 +303,7 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
         String wuSignature = getWorkUnitSignature(
             datetimeWatermarkName, dtPartition.getLeft(),
             unitWatermarkName, unitPartition);
-        LOG.debug("Checking work unit: {}", wuSignature);
+        log.debug("Checking work unit: {}", wuSignature);
 
         // if a work unit exists in state store, manage its watermark independently
         long unitCutoffTime = -1L;
@@ -307,7 +312,7 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
               - MSTAGE_GRACE_PERIOD_DAYS.getMillis(sourceState)
               + MSTAGE_ABSTINENT_PERIOD_DAYS.getMillis(sourceState);
         }
-        LOG.debug(String.format("previousHighWatermarks.get(wuSignature): %s, unitCutoffTime: %s",
+        log.debug(String.format("previousHighWatermarks.get(wuSignature): %s, unitCutoffTime: %s",
             previousHighWatermarks.get(wuSignature), unitCutoffTime));
 
         // for a dated work unit partition, we only need to redo it when its previous
@@ -322,7 +327,7 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
               ? dtPartition : previousHighWatermarks.get(wuSignature).equals(dtPartition.left)
               ? dtPartition : new ImmutablePair<>(Long.max(unitCutoffTime, dtPartition.left), dtPartition.right);
 
-          LOG.info(String.format(MSG_WORK_UNIT_INFO, wuSignature, dtPartitionModified));
+          log.info(String.format(MSG_WORK_UNIT_INFO, wuSignature, dtPartitionModified));
           WorkUnit workUnit = WorkUnit.create(extract,
               new WatermarkInterval(
                   new LongWatermark(dtPartitionModified.getLeft()),
@@ -347,15 +352,15 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
             && this.jobKeys.hasOutputSchema()) {
             // populate the output schema read from URN reader to sub tasks
             // so that the URN reader will not be called again
-            LOG.info("Populating output schema to work units:");
-            LOG.info("Output schema: {}", this.jobKeys.getOutputSchema().toString());
+            log.info("Populating output schema to work units:");
+            log.info("Output schema: {}", this.jobKeys.getOutputSchema().toString());
             workUnit.setProp(MSTAGE_OUTPUT_SCHEMA.getConfig(),
                 this.jobKeys.getOutputSchema().toString());
 
             // populate the target schema read from URN reader to sub tasks
             // so that the URN reader will not be called again
-            LOG.info("Populating target schema to work units:");
-            LOG.info("Target schema: {}", jobKeys.getTargetSchema().toString());
+            log.info("Populating target schema to work units:");
+            log.info("Target schema: {}", jobKeys.getTargetSchema().toString());
             workUnit.setProp(MSTAGE_TARGET_SCHEMA.getConfig(),
                 jobKeys.getTargetSchema().toString());
           }
@@ -401,7 +406,7 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
       // Unit watermarks might contain encoded file separator,
       // in such case, we will decode the watermark name so that it can be compared with
       // work unit signatures
-      LOG.debug("Dataset Signature: {}, High Watermark: {}", EndecoUtils.getHadoopFsDecoded(entry.getKey()), highWatermark);
+      log.debug("Dataset Signature: {}, High Watermark: {}", EndecoUtils.getHadoopFsDecoded(entry.getKey()), highWatermark);
       watermarks.put(EndecoUtils.getHadoopFsDecoded(entry.getKey()), highWatermark);
     }
     return ImmutableMap.copyOf(watermarks);
@@ -444,17 +449,17 @@ public class MultistageSource<S, D> extends AbstractSource<S, D> {
    * @return the updated work unit configuration
    */
   protected String getUpdatedWorkUnitActivation(WorkUnit wu, JsonObject authentication) {
-    LOG.debug("Activation property (origin): {}", wu.getProp(MSTAGE_ACTIVATION_PROPERTY.toString(), ""));
+    log.debug("Activation property (origin): {}", wu.getProp(MSTAGE_ACTIVATION_PROPERTY.toString(), ""));
     if (!wu.getProp(MSTAGE_ACTIVATION_PROPERTY.toString(), StringUtils.EMPTY).isEmpty()) {
       JsonObject existing = GSON.fromJson(wu.getProp(MSTAGE_ACTIVATION_PROPERTY.toString()), JsonObject.class);
       for (Map.Entry<String, JsonElement> entry: authentication.entrySet()) {
         existing.remove(entry.getKey());
         existing.addProperty(entry.getKey(), entry.getValue().getAsString());
       }
-      LOG.debug("Activation property (modified): {}", existing.toString());
+      log.debug("Activation property (modified): {}", existing.toString());
       return existing.toString();
     }
-    LOG.debug("Activation property (new): {}", authentication.toString());
+    log.debug("Activation property (new): {}", authentication.toString());
     return authentication.toString();
   }
 

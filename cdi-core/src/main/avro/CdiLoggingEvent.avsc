@@ -1,0 +1,48 @@
+{
+  "type": "record",
+  "name": "CdiLoggingEvent",
+  "namespace" : "com.linkedin.cdi.events",
+  "fields": [
+    {
+      "name": "timestamp",
+      "type": "long",
+      "default": 0,
+      "doc": "Time at which event was created."
+    },
+    {
+      "name": "namespace",
+      "type": "string",
+      "doc": "extract namespace"
+    },
+    {
+      "name": "tablename",
+      "type": "string",
+      "doc": "extract tablename"
+    },
+    {
+      "name": "taskid",
+      "type": ["string","null"],
+      "doc": "Current task ID"
+    },
+    {
+      "name": "jobid",
+      "type": "string",
+      "doc": "Current job ID"
+    },
+    {
+      "name": "azkabanid",
+      "type": ["string", "null"],
+      "doc": "azkaban execution ID"
+    },
+    {
+      "name": "message",
+      "type": "string",
+      "doc": "log message"
+    },
+    {
+      "name": "level",
+      "type": "string",
+      "doc": "log levels"
+    }
+  ]
+}

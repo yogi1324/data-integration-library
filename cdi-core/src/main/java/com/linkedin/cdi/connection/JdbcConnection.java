@@ -8,6 +8,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.linkedin.cdi.exception.RetriableAuthenticationException;
 import com.linkedin.cdi.factory.ConnectionClientFactory;
+import com.linkedin.cdi.factory.LogWrapper;
 import com.linkedin.cdi.keys.ExtractorKeys;
 import com.linkedin.cdi.keys.JdbcKeys;
 import com.linkedin.cdi.keys.JobKeys;
@@ -28,8 +29,6 @@ import java.util.HashMap;
 import java.util.List;
 import org.apache.commons.lang3.StringEscapeUtils;
 import org.apache.gobblin.configuration.State;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import static com.linkedin.cdi.configuration.PropertyCollection.*;
 
@@ -41,7 +40,8 @@ import static com.linkedin.cdi.configuration.PropertyCollection.*;
  * @author Chris Li
  */
 public class JdbcConnection extends MultistageConnection {
-  private static final Logger LOG = LoggerFactory.getLogger(JdbcConnection.class);
+  //private static final Logger LOG = LoggerFactory.getLogger(JdbcConnection.class);
+  private LogWrapper log;
   private JdbcKeys jdbcSourceKeys;
 
   public JdbcKeys getJdbcSourceKeys() {
@@ -66,6 +66,7 @@ public class JdbcConnection extends MultistageConnection {
     super(state, jobKeys, extractorKeys);
     assert jobKeys instanceof JdbcKeys;
     jdbcSourceKeys = (JdbcKeys) jobKeys;
+    log = new LogWrapper(state, JdbcConnection.class);
   }
 
   @Override
@@ -75,20 +76,21 @@ public class JdbcConnection extends MultistageConnection {
         getWorkUnitSpecificString(jdbcSourceKeys.getJdbcStatement(), getExtractorKeys().getDynamicParameters()),
         status);
     } catch (Exception e) {
-      LOG.error(e.getMessage(), e);
+      log.error(e.getMessage(), e);
       return null;
     }
   }
 
   @Override
   public boolean closeAll(String message) {
+    if (log !=null) log.close();
     try {
       if (jdbcConnection != null) {
         jdbcConnection.close();
         jdbcConnection = null;
       }
     } catch (Exception e) {
-      LOG.error("Error closing the input stream", e);
+      log.error("Error closing the input stream", e);
       return false;
     }
     return true;
@@ -122,7 +124,7 @@ public class JdbcConnection extends MultistageConnection {
           SOURCE_CONN_PASSWORD.get(state),
           state);
     } catch (Exception e) {
-      LOG.error("Error creating Jdbc connection: {}", e.getMessage());
+      log.error("Error creating Jdbc connection: {}", e.getMessage());
     }
     return null;
   }
@@ -157,14 +159,14 @@ public class JdbcConnection extends MultistageConnection {
       String query,
       WorkUnitStatus wuStatus) throws SQLException {
 
-    LOG.info("Executing SQL statement: {}", query);
+    log.info("Executing SQL statement: {}", query);
     Statement stmt = jdbcConnection.createStatement();
 
     if (jdbcSourceKeys.isPaginationEnabled()) {
       try {
         stmt.setFetchSize(jdbcSourceKeys.getPaginationInitValues().get(ParameterTypes.PAGESIZE).intValue());
       } catch (SQLException e) {
-        LOG.warn("not able to set fetch size");
+        log.warn("not able to set fetch size");
       }
     }
 
